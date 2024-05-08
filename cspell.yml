@@ -1,0 +1,15 @@
+language: en
+words:
+  - pydantic
+  - dtype
+  - dtypes
+  - frombuffer
+  - postprocess
+  - ndarray
+  - itemsize
+  - dedupe
+  - sctype
+dictionaries:
+  - python
+  - cpp
+useGitignore: true

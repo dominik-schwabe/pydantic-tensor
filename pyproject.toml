@@ -1,0 +1,174 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pydantic-tensor"
+dynamic = ["version"]
+description = 'Pydantic support for parsing, validation, and serialization of tensors'
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+keywords = []
+authors = [{ name = "Dominik Schwabe", email = "schwabedominik@gmail.com" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = ["pydantic>=2.6", "numpy"]
+
+[project.urls]
+Documentation = "https://github.com/dominik-schwabe/pydantic-tensor#readme"
+Issues = "https://github.com/dominik-schwabe/pydantic-tensor/issues"
+Source = "https://github.com/dominik-schwabe/pydantic-tensor"
+
+[tool.pyright]
+pythonVersion = "3.9"
+typeCheckingMode = "strict"
+
+[tool.hatch.version]
+path = "src/pydantic_tensor/__about__.py"
+
+[tool.hatch.envs.default.scripts]
+spell = "cspell --quiet {args:src tests README.md}"
+update-hooks = "pre-commit autoupdate"
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.9", "3.10", "3.11", "3.12"]
+[tool.hatch.envs.test]
+dependencies = [
+  "coverage[toml]>=6.5",
+  "pytest",
+  "torch",
+  "tensorflow",
+  "jax",
+  "jaxlib",
+]
+[tool.hatch.envs.test.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = ["- coverage combine", "coverage report"]
+cov = ["test-cov", "cov-report"]
+
+[tool.hatch.envs.lint]
+detached = true
+dependencies = ["mypy>=1.0.0", "ruff>=0.3.0", "vulture"]
+[tool.hatch.envs.lint.scripts]
+format = [
+  "ruff check --fix-only {args:src tests}",
+  "ruff format {args:src tests}",
+]
+style = ["ruff check {args:src tests}"]
+deadcode = "vulture {args:src}"
+typing = "mypy --install-types --non-interactive {args:src}"
+all = ["- format", "- style", "- typing", "- deadcode"]
+
+[tool.vulture]
+min_confidence = 60
+ignore_names = ["TensorAnnotation", "AnyTensor"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "PT012",
+  "BLE001",
+  "COM812",
+  "ISC001",
+  "PERF203",
+  "RUF009",
+  "D",
+  "ANN",
+  "INP",
+  "TCH",
+  "G",
+  "FA",
+  "PGH",
+  "RET",
+  "PYI",
+  "PLW",
+  "EM101",
+  "EM102",
+  "S104",
+  "A003",
+  # Allow boolean positional values in function calls, like `dict.get(... True)`
+  "FBT003",
+  # Ignore checks for possible passwords
+  "S105",
+  "S106",
+  "S107",
+  # Ignore complexity
+  "C901",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+]
+unfixable = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["pydantic_tensor"]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["S101", "ERA001", "E402"]
+"docs/*" = ["I002", "T201"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.9"
+implicit_reexport = true
+check_untyped_defs = true
+disallow_any_explicit = false
+ignore_missing_imports = true
+no_implicit_optional = true
+no_implicit_reexport = true
+pretty = true
+show_column_numbers = true
+show_error_codes = true
+strict_equality = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[tool.coverage.run]
+source_pkgs = ["pydantic_tensor", "tests"]
+branch = true
+parallel = true
+omit = ["src/pydantic_tensor/__about__.py"]
+
+[tool.coverage.paths]
+pydantic_tensor = [
+  "src/pydantic_tensor",
+  "*/pydantic-tensor/src/pydantic_tensor",
+]
+tests = ["tests", "*/pydantic-tensor/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+  "if typing.TYPE_CHECKING:",
+  "@overload",
+  "@typing.overload",
+  "assert_never",
+  "no cov",
+  "if __name__ == .__main__.:",
+]

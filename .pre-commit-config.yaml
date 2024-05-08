@@ -1,0 +1,23 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+fail_fast: true
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+repos:
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.14.0
+    hooks:
+      - id: commitlint
+        additional_dependencies: ["@commitlint/config-conventional"]
+        stages: [commit-msg]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-toml
+      - id: check-yaml
+        args: [--unsafe]
+      - id: debug-statements
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
