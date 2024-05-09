@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import contextlib
+import typing
 import warnings
 
-from pydantic_tensor.types import Tensor_T
+from pydantic_tensor.interface import TENSOR_TYPE_TO_INTERFACE
+from pydantic_tensor.types import Tensor_T, TensorTypes
 
 warnings.filterwarnings("ignore", ".*PyType_Spec with a metaclass that has custom.*")
 
@@ -11,14 +14,14 @@ import sys
 from contextlib import contextmanager
 from typing import Annotated, Any, Generic, Literal, TypeVar, Union
 
-import jax.numpy as jnp
+import jax.numpy as jnp  # noqa: F401
 import numpy as np
 import pytest
 import tensorflow as tf
-import torch
+import torch  # noqa: F401
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from pydantic_tensor.backend.torch import TorchInterface, TorchTensor
+from pydantic_tensor.backend.torch import TorchTensor
 from pydantic_tensor.delegate import NumpyDelegate
 from pydantic_tensor.pydantic.dtype import ALL_DTYPES
 from pydantic_tensor.tensor import ALL_INTERFACES, Tensor
@@ -55,12 +58,15 @@ FLOAT32_2X2 = '{"shape": [2, 2], "dtype": "float32", "data": "AACAPwAAgD8AAIA/AA
 FLOAT32_2X3 = '{"shape": [2, 3], "dtype": "float32", "data": "AACAPwAAgD8AAIA/AACAPwAAgD8AAIA/"}'
 
 
-SERIALIZATIONS_2X2 = {dtype: json.loads(convert(np.array(np.ones((2, 2), dtype=dtype)))) for dtype in ALL_DTYPES}
+SERIALIZATIONS_2X2: dict[str, Any] = {}
+for dtype in ALL_DTYPES:
+    with contextlib.suppress(TypeError):
+        SERIALIZATIONS_2X2[dtype] = json.loads(convert(np.array(np.ones((2, 2), dtype=dtype))))
 
 
 def is_same(x: Any, y: Any):
     assert type(x) is type(y)
-    assert np.array_equal(x, y)
+    assert bool(np.asarray(x == y).all())
 
 
 def same_parse(
@@ -91,24 +97,34 @@ def validate_fail(tp: type[Tensor[Any, Any, Any]], json_str: str):
         ta.validate_json(json_str)
 
 
+SKIP_DTYPES = {
+    "jax": {"int64", "uint64", "float64", "complex64", "complex128"},
+    "numpy": {"bfloat16"},
+}
+
+
 def test_dtype():
     for dtype, ser in SERIALIZATIONS_2X2.items():
-        ta = TypeAdapter(Tensor[np.ndarray[Any, Any], Any, Literal[dtype]])
         np_ones = np.ones((2, 2), dtype=dtype)
-        same_parse(ta, np_ones, ser)
-        same_parse(ta, torch.ones((2, 2), dtype=TorchInterface.str_to_dtype(dtype)), ser, np_ones, np_ones)
-        if dtype not in {"int64", "uint64", "float64", "complex64", "complex128"}:
-            same_parse(ta, jnp.ones((2, 2), dtype=dtype), ser, np_ones, np_ones)
-        if dtype not in {"int64", "uint64", "float64", "complex64", "complex128"}:
-            same_parse(ta, tf.ones((2, 2), dtype=dtype), ser, np_ones, np_ones)
+        interfaces = list(TENSOR_TYPE_TO_INTERFACE.values())
+        ones_delegate = NumpyDelegate.from_tensor(np_ones, interfaces)
+        for tensor_type, interface in TENSOR_TYPE_TO_INTERFACE.items():
+            if dtype not in SKIP_DTYPES.get(interface.get_name(), []):
+                ta = TypeAdapter(Tensor[tensor_type, Any, Literal[dtype]])
+                ones = ones_delegate.deserialize(interface)
+                for sub_interface in TENSOR_TYPE_TO_INTERFACE.values():
+                    if dtype not in SKIP_DTYPES.get(sub_interface.get_name(), []):
+                        sub_ones = ones_delegate.deserialize(sub_interface)
+                        same_parse(ta, sub_ones, ser, ones, ones)
 
 
 def test_shape():
-    validate(Tensor[TorchTensor, tuple[int, int], Literal["float32"]], FLOAT32_2X2)
-    validate(Tensor[TorchTensor, tuple[int, int], Literal["float32"]], FLOAT32_2X3)
-    validate(Tensor[TorchTensor, tuple[int, LimitedInt], Literal["float32"]], FLOAT32_2X2)
-    validate_fail(Tensor[TorchTensor, tuple[int, LimitedInt], Literal["float32"]], FLOAT32_2X3)
-    validate_fail(Tensor[TorchTensor, tuple[int], Literal["float32"]], FLOAT32_2X2)
+    for tp in typing.get_args(TensorTypes):
+        validate(Tensor[tp, tuple[int, int], Literal["float32"]], FLOAT32_2X2)
+        validate(Tensor[tp, tuple[int, int], Literal["float32"]], FLOAT32_2X3)
+        validate(Tensor[tp, tuple[int, LimitedInt], Literal["float32"]], FLOAT32_2X2)
+        validate_fail(Tensor[tp, tuple[int, LimitedInt], Literal["float32"]], FLOAT32_2X3)
+        validate_fail(Tensor[tp, tuple[int], Literal["float32"]], FLOAT32_2X2)
 
 
 def test_missing_import():

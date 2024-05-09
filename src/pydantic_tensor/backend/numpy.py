@@ -20,22 +20,11 @@ else:
         pass
 
 
-BYTEORDER = {
-    "=": sys.byteorder,
-    "<": "little",
-    ">": "big",
-    "|": None,
-}
-
-
-def convert_endianness(vec: np.ndarray[Any, Any]):
-    byteorder = BYTEORDER[vec.dtype.byteorder]
-    if byteorder == "big":
-        vec = vec.byteswap()
-    return vec
-
-
 class NumpyInterface:
+    @staticmethod
+    def get_name() -> str:
+        return "numpy"
+
     @staticmethod
     def get_tensor_name() -> str:
         return "numpy.ndarray"

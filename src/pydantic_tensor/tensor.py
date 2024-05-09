@@ -6,7 +6,7 @@ from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler, SerializationIn
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import SchemaValidator, core_schema
 
-from pydantic_tensor.delegate import NumpyDelegate, find_interface_by_tensor, find_loaded_interface_by_dtype
+from pydantic_tensor.delegate import NumpyDelegate, find_interface_by_tensor, iter_loaded_interface_by_dtype
 from pydantic_tensor.interface import TENSOR_TYPE_TO_INTERFACE, annotation_to_interfaces
 from pydantic_tensor.pydantic.dtype import build_dtype_schema
 from pydantic_tensor.pydantic.shape import postprocess_shape_schema
@@ -40,6 +40,16 @@ class Tensor(Generic[Tensor_T, Shape_T, DType_T]):
                 return json_tensor
             return x.value
 
+        def try_deserialize(delegate: NumpyDelegate, str_dtype: str):
+            errors: dict[str, str] = {}
+            for handler_tif, _ in iter_loaded_interface_by_dtype(interfaces, str_dtype):
+                try:
+                    return delegate.deserialize(handler_tif)
+                except ValueError as exc:
+                    errors[handler_tif.get_name()] = str(exc)
+            msg = f"no interface could successfully deserialize the tensor (errors: {errors})"
+            raise ValueError(msg)
+
         def validate_tensor(x: Any) -> Tensor[Tensor_T, Shape_T, DType_T]:
             if isinstance(x, Tensor):
                 x = x.value
@@ -48,8 +58,7 @@ class Tensor(Generic[Tensor_T, Shape_T, DType_T]):
             shape_validator.validate_python(tif.extract_shape(x))
             dtype_validator.validate_python(str_dtype)
             if tif not in interfaces:
-                handler_tif, _ = find_loaded_interface_by_dtype(interfaces, str_dtype)
-                x = NumpyDelegate.from_tensor(x, [tif]).deserialize(handler_tif)
+                x = try_deserialize(NumpyDelegate.from_tensor(x, [tif]), str_dtype)
             return Tensor(x)
 
         json_schema = core_schema.no_info_after_validator_function(

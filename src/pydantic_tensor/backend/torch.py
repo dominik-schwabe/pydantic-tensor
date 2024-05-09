@@ -23,6 +23,10 @@ else:
 
 class TorchInterface:
     @staticmethod
+    def get_name() -> str:
+        return "torch"
+
+    @staticmethod
     def get_tensor_name() -> str:
         return "torch.Tensor"
 

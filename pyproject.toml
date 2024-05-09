@@ -71,7 +71,7 @@ all = ["- format", "- style", "- typing", "- deadcode"]
 
 [tool.vulture]
 min_confidence = 60
-ignore_names = ["TensorAnnotation", "AnyTensor"]
+ignore_names = []
 
 [tool.ruff]
 target-version = "py39"

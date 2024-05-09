@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import sys
 from collections import defaultdict
 from collections.abc import Iterable
 from functools import reduce
@@ -9,14 +10,24 @@ from typing import Any
 
 import numpy as np
 
-from pydantic_tensor.backend.numpy import NumpyInterface, convert_endianness
 from pydantic_tensor.interface import TensorInterface
 from pydantic_tensor.types import JSONTensor
 from pydantic_tensor.utils.base64 import base64_num_bytes
+from pydantic_tensor.utils.convert import ensure_int_tuple
+
+BYTEORDER = {
+    "=": sys.byteorder,
+    "<": "little",
+    ">": "big",
+    "|": None,
+}
 
 
-class ConsistencyError(Exception):
-    pass
+def convert_endianness(vec: np.ndarray[Any, Any]):
+    byteorder = BYTEORDER[vec.dtype.byteorder]
+    if byteorder == "big":
+        vec = vec.byteswap()
+    return vec
 
 
 def score_candidate(candidate: str):
@@ -44,19 +55,22 @@ for v in np.sctypeDict.values():
 ALIGNMENT_TO_DTYPE_DELEGATE = {align: select_best(candidates) for align, candidates in DELEGATE_CANDIDATES.items()}
 
 
-def find_loaded_interface_by_dtype(interfaces: Iterable[TensorInterface[Any, Any]], dtype: str):
+def iter_loaded_interface_by_dtype(interfaces: Iterable[TensorInterface[Any, Any]], dtype: str):
     loaded: list[TensorInterface[Any, Any]] = []
+    yielded = False
     for interface in interfaces:
         if interface.is_imported():
             resolved = interface.str_to_dtype(dtype)
             if resolved is not None:
-                return interface, resolved
+                yielded = True
+                yield interface, resolved
             loaded.append(interface)
-    if not loaded:
-        msg = f"no passed interface is loaded: {[e.get_tensor_name() for e in interfaces]}"
-    else:
-        msg = f'no passed loaded interface supports dtype "{dtype}"'
-    raise ValueError(msg)
+    if not yielded:
+        if not loaded:
+            msg = f"no passed interface is loaded: {[e.get_tensor_name() for e in interfaces]}"
+        else:
+            msg = f'no passed loaded interface supports dtype "{dtype}"'
+        raise ValueError(msg)
 
 
 def find_interface_by_tensor(tensor: Any, interfaces: Iterable[TensorInterface[Any, Any]]):
@@ -80,7 +94,7 @@ class NumpyDelegate:
     @classmethod
     def from_json_tensor(cls, x: JSONTensor, interfaces: list[TensorInterface[Any, Any]]) -> NumpyDelegate:
         data, shape, dtype = x["data"], x["shape"], x["dtype"]
-        interface, resolved_dtype = find_loaded_interface_by_dtype(interfaces, dtype)
+        interface, resolved_dtype = next(iter_loaded_interface_by_dtype(interfaces, dtype))
         align, itemsize = interface.get_dtype_alignment(resolved_dtype)
         dtype_delegate = ALIGNMENT_TO_DTYPE_DELEGATE[(align, itemsize)]
         num_bytes = base64_num_bytes(data)
@@ -104,19 +118,20 @@ class NumpyDelegate:
         dtype = interface.extract_dtype(x)
         alignment = interface.get_dtype_alignment(dtype)
         dtype_delegate = ALIGNMENT_TO_DTYPE_DELEGATE[alignment]
-        native_dtype_delegate = interface.str_to_dtype(NumpyInterface.dtype_to_str(dtype_delegate))
+        native_dtype_delegate = interface.str_to_dtype(dtype_delegate.name)
         if native_dtype_delegate is None:
             msg = f'dtype {dtype_delegate} is not supported by "{interface.get_tensor_name()}"'
             raise ValueError(msg)
         numpy_tensor = interface.to_numpy_view(x, native_dtype_delegate)
-        serialized_dtype = NumpyInterface.extract_dtype(numpy_tensor)
-        if dtype_delegate != serialized_dtype:
-            msg = f'requested dtype "{dtype}" but serialized as "{serialized_dtype}"'
-            raise ConsistencyError(msg)
-        serialized_shape = NumpyInterface.extract_shape(numpy_tensor)
+        serialized_dtype = numpy_tensor.dtype.name
+        requested_dtype = dtype_delegate.name
+        if requested_dtype != serialized_dtype:
+            msg = f'requested dtype "{requested_dtype}" but serialized as "{serialized_dtype}"'
+            raise ValueError(msg)
+        serialized_shape = ensure_int_tuple(numpy_tensor.shape)
         if shape != serialized_shape:
             msg = f"requested shape {shape} but serialized as {serialized_shape}"
-            raise ConsistencyError(msg)
+            raise ValueError(msg)
         return cls(convert_endianness(numpy_tensor), interface.dtype_to_str(dtype), interface)
 
     def serialize(self) -> JSONTensor:
@@ -129,7 +144,18 @@ class NumpyDelegate:
     def deserialize(self, target_interface: TensorInterface[Any, Any] | None = None):
         tif = self.source_interface if target_interface is None else target_interface
         dtype = tif.str_to_dtype(self.original_dtype)
-        if dtype is not None:
-            return tif.from_numpy_view(self.delegate, dtype)
-        msg = f'interface for "{tif.get_tensor_name()}" can not handle dtype "{self.original_dtype}"'
-        raise ValueError(msg)
+        if dtype is None:
+            msg = f'interface for "{tif.get_tensor_name()}" can not handle dtype "{self.original_dtype}"'
+            raise ValueError(msg)
+        deserialized = tif.from_numpy_view(self.delegate, dtype)
+        serialized_dtype = tif.dtype_to_str(tif.extract_dtype(deserialized))
+        requested_dtype = self.original_dtype
+        if self.original_dtype != serialized_dtype:
+            msg = f'requested dtype "{requested_dtype}" but deserialized as "{serialized_dtype}"'
+            raise ValueError(msg)
+        serialized_shape = tif.extract_shape(deserialized)
+        requested_shape = self.delegate.shape
+        if requested_shape != serialized_shape:
+            msg = f"requested shape {requested_shape} but deserialized as {serialized_shape}"
+            raise ValueError(msg)
+        return deserialized

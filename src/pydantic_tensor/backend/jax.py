@@ -24,6 +24,10 @@ else:
 
 class JaxInterface:
     @staticmethod
+    def get_name() -> str:
+        return "jax"
+
+    @staticmethod
     def get_tensor_name() -> str:
         return "jax.Array"
 

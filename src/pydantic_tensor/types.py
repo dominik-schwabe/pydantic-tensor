@@ -20,8 +20,9 @@ Int = Literal["int8", "int16", "int32", "int64"]
 UInt = Literal["uint8", "uint16", "uint32", "uint64"]
 Float = Literal["float16", "float32", "float64"]
 Complex = Literal["complex64", "complex128"]
+BFloat = Literal["bfloat16"]
 
-DTypes = Union[Int, UInt, Float, Complex]
+DTypes = Union[Int, UInt, Float, Complex, BFloat]
 
 Tensor_T = TypeVar("Tensor_T", bound=TensorTypes)
 Shape_T = TypeVar("Shape_T", bound=tuple[int, ...])

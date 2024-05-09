@@ -20,6 +20,10 @@ DTYPE_T = TypeVar("DTYPE_T")
 
 class TensorInterface(Protocol[TENSOR_T, DTYPE_T]):
     @staticmethod
+    def get_name() -> str:
+        raise NotImplementedError
+
+    @staticmethod
     def get_tensor_name() -> str:
         raise NotImplementedError
 

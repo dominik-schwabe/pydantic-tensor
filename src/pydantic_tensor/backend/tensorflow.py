@@ -23,6 +23,10 @@ else:
 
 class TensorflowInterface:
     @staticmethod
+    def get_name() -> str:
+        return "tensorflow"
+
+    @staticmethod
     def get_tensor_name() -> str:
         return "tensorflow.Tensor"
 

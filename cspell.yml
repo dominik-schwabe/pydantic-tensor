@@ -9,6 +9,9 @@ words:
   - itemsize
   - dedupe
   - sctype
+  - AACA
+  - AAIA
+  - AACA
 dictionaries:
   - python
   - cpp
